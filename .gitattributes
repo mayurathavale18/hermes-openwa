@@ -1,0 +1,3 @@
+# Normalize to LF in the repository: Hermes is a Python project and its own tree is LF-based,
+# so a plugin that ships CRLF would show up as a whole-file diff in reviews.
+* text=auto eol=lf

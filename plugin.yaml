@@ -1,0 +1,53 @@
+name: openwa-platform
+label: OpenWA (WhatsApp)
+kind: platform
+version: 0.1.0
+description: >
+  Front an existing OpenWA session in Hermes Agent without re-pairing the WhatsApp number.
+  Hermes' built-in WhatsApp adapter uses Baileys, and two WhatsApp Web sessions cannot share
+  one number — so a number already paired to OpenWA cannot also be used by the built-in
+  adapter. This plugin talks to the OpenWA gateway you already run.
+author: Mayur
+license: MIT
+tags: [gateway, whatsapp]
+
+requires_env:
+  - name: OPENWA_BASE_URL
+    description: "OpenWA origin, e.g. http://127.0.0.1:2785"
+    prompt: "OpenWA base URL"
+    password: false
+  - name: OPENWA_API_KEY
+    description: "Gateway API key (data/.api-key in the OpenWA checkout, or its dashboard)"
+    prompt: "OpenWA API key"
+    password: true
+  - name: OPENWA_WEBHOOK_SECRET
+    description: >
+      HMAC secret for the OpenWA webhook. Required: an unauthenticated webhook can start an
+      agent turn with terminal access, so the adapter refuses to run without it.
+    prompt: "Webhook signing secret"
+    password: true
+
+optional_env:
+  - name: OPENWA_SESSION_ID
+    description: "Session to send from; defaults to the session named in each webhook"
+    password: false
+  - name: OPENWA_WEBHOOK_HOST
+    description: "Bind address for the local webhook listener (default 127.0.0.1)"
+    password: false
+  - name: OPENWA_WEBHOOK_PORT
+    description: "Port for the local webhook listener (default 8790)"
+    password: false
+  - name: OPENWA_SELF_JID
+    description: "The account's own JID, if it cannot be derived from the message"
+    password: false
+  - name: OPENWA_ALLOW_SELF_CHAT
+    description: >
+      Set true to let "message yourself" traffic reach the agent. Still requires a self-mention
+      (or a literal @me) so ordinary notes to self stay out.
+    password: false
+  - name: OPENWA_ALLOWED_USERS
+    description: "Comma-separated JIDs allowed to talk to the bot"
+    password: false
+  - name: OPENWA_HOME_CHANNEL
+    description: "Default chat for cron delivery (deliver=openwa)"
+    password: false
