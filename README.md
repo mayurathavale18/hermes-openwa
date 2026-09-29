@@ -96,21 +96,37 @@ The suite covers signature verification, the trigger/loop-prevention gate, chunk
 REST client against an injected transport. `adapter.py` is syntax-checked (it cannot be imported
 without Hermes on the path).
 
-## Honest status
+## Verified against a real Hermes install
 
-Written against Hermes' published developer docs, and **not yet run against a live Hermes
-install**. The transport is tested; the Hermes-facing seams below are the ones to confirm on
-first run:
+Checked against a local Hermes (v0.21.5, git install) rather than only the published docs:
 
-- `SendResult(...)` field names — this assumes `success`, `message_id`, and `error`.
-- `seed_extra_from_env(...)` argument shape and `home_env` behaviour.
-- `acquire_scoped_lock(...)` return signature (`(acquired, existing)`).
-- `self.build_source(...)` keyword names and `MessageDeduplicator.is_duplicate(...)`.
-- Whether the loader needs the `__init__.py` re-export for a `kind: platform` plugin; the
-  import falls back to a flat `from openwa import ...` if it loads as a plain module.
+- **`hermes plugins doctor . --ci` → OK** — runtime discovery, manifest parsing, import and
+  `register(ctx)` all pass.
+- **The adapter path was exercised under Hermes' own interpreter** with a fake transport, which
+  matters because `plugins doctor` defers the adapter factory:
+  `Platform("openwa")` resolves; `send("hello world")` returns
+  `SendResult(success=True, message_id=…)`; a 5000-character reply splits into 2 chunks;
+  `send_typing()` is a clean no-op; and an unset session id returns `SendResult(success=False,
+  error=…)` instead of raising.
+- Every `gateway.*` symbol this plugin imports was read from the installed source:
+  `SendResult(success, message_id, error)`; `build_source(chat_id, chat_name, chat_type,
+  user_id, user_name, ...)`; `MessageEvent(text, message_type, source, message_id)`;
+  `MessageType`; `extra_or_secret(extra, key, env)`;
+  `get_scoped_secret(name, default)`; `seed_extra_from_env(spec, home_env=...)`;
+  `acquire_scoped_lock(scope, identity) -> (acquired, existing)`; `release_scoped_lock(scope,
+  identity)`; `MessageDeduplicator(ttl_seconds=...).is_duplicate(...)`.
+- Every `ctx.register_platform(...)` keyword exists on `PlatformEntry` — worth checking, because
+  an unknown key raises `TypeError` and would fail the load: `validate_config`, `required_env`,
+  `allowed_users_env`, `allow_all_env`, `env_enablement_fn`, `cron_deliver_env_var`,
+  `max_message_length`, `emoji`, `platform_hint`.
 
-`hermes plugins doctor . --ci` is the intended first check (it exercises discovery, the manifest,
-`register(ctx)`, and the tool/hook registries without needing a gateway).
+One ordering constraint worth knowing: `Platform(name)` only resolves a dynamic member for an
+**already-registered** platform, so the adapter must not be constructed before `register(ctx)`
+runs. Hermes guarantees that (the factory is deferred), and there is a comment on it in
+`adapter.py`.
+
+**Not yet exercised:** a live gateway run against a real OpenWA session — that needs real
+credentials and posts to WhatsApp. Everything up to the wire is covered.
 
 ## License
 

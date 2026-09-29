@@ -56,7 +56,16 @@ def _truthy(value: Any) -> bool:
 class OpenWaAdapter(BasePlatformAdapter):
     """Bridges Hermes to an OpenWA gateway over its webhook + REST API."""
 
+    # WhatsApp renders ``` fences as monospace, so let the gateway send real code blocks.
+    # Deliberately NOT supports_status_text: WhatsApp has a native typing indicator, not a
+    # textual status line, so there is nothing for set_status_text() to render.
+    supports_code_blocks = True
+
     def __init__(self, config: PlatformConfig):
+        # Platform(name) resolves a dynamic member only for an already-registered platform
+        # (gateway/config.py `_missing_` checks platform_registry). This works because the
+        # adapter_factory runs after register(ctx); constructing the adapter before registration
+        # would raise ValueError.
         super().__init__(config, Platform(PLATFORM_NAME))
         extra = getattr(config, "extra", None) or {}
 
