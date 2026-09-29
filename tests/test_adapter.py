@@ -173,6 +173,51 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(dispatched, [])
 
+    def test_a_strangers_dm_is_dropped_before_hermes_by_default(self):
+        """STRICT posture: nobody but the operator ever reaches the agent from this number."""
+        adapter = self.module.OpenWaAdapter(_config(self.PHONE, self.LID))
+        dispatched = []
+        async def _capture(event):
+            dispatched.append(event)
+        adapter.handle_message = _capture
+
+        asyncio.run(
+            adapter._handle_envelope(
+                {"event": "message.received", "sessionId": "s",
+                 "data": {"id": "stranger-1", "from": "29274698436841@lid",
+                          "to": self.PHONE, "chatId": "29274698436841@lid",
+                          "body": "hey, can you help me?", "fromMe": False,
+                          "isGroup": False, "kind": "individual"}}
+            )
+        )
+        self.assertEqual(dispatched, [])
+
+    def test_openwa_allow_others_hands_the_gate_to_hermes(self):
+        adapter = self.module.OpenWaAdapter(_config(self.PHONE, self.LID, allow_others="true"))
+        self.assertTrue(adapter.allow_others)
+        dispatched = []
+        async def _capture(event):
+            dispatched.append(event)
+        adapter.handle_message = _capture
+
+        asyncio.run(
+            adapter._handle_envelope(
+                {"event": "message.received", "sessionId": "s",
+                 "data": {"id": "stranger-2", "from": "29274698436841@lid",
+                          "to": self.PHONE, "chatId": "29274698436841@lid",
+                          "body": "hey, can you help me?", "fromMe": False,
+                          "isGroup": False, "kind": "individual"}}
+            )
+        )
+        self.assertEqual(len(dispatched), 1, "forwarded so HERMES' authorization governs")
+
+    def test_unauthorized_dms_are_silenced_by_default(self):
+        """The gateway's default for an unknown DM is to DM BACK a pairing code. Seeded to
+        'ignore' so a stranger never gets a bot reply from this adapter."""
+        adapter = self.module.OpenWaAdapter(_config(self.PHONE, self.LID))
+        self.assertEqual(adapter.unauthorized_dm_behavior, "ignore")
+        self.assertEqual(adapter.config.extra.get("unauthorized_dm_behavior"), "ignore")
+
     def test_send_typing_is_best_effort(self):
         class Broken:
             async def send_chat_state(self, *a, **k):
@@ -204,7 +249,7 @@ class _StubContext:
         pass
 
 
-def _config(phone, lid, session_id="sess-1"):
+def _config(phone, lid, session_id="sess-1", allow_others=None):
     cfg = PlatformConfig()
     cfg.extra = {
         "base_url": "http://127.0.0.1:2785",
@@ -215,6 +260,8 @@ def _config(phone, lid, session_id="sess-1"):
         "allow_self_chat": "true",
         "self_jid": f"{phone},{lid}",
     }
+    if allow_others is not None:
+        cfg.extra["allow_others"] = allow_others
     return cfg
 
 

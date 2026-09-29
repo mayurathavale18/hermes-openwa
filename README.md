@@ -83,6 +83,8 @@ curl -X POST http://127.0.0.1:2785/api/sessions/$SESSION_ID/webhooks \
 | `OPENWA_WEBHOOK_HOST` / `OPENWA_WEBHOOK_PORT` | no | default `127.0.0.1` / `8790` |
 | `OPENWA_SELF_JID` | no | The account's own identities, **comma-separated** — WhatsApp uses the phone JID (`@c.us`) for phone-originated messages and the account LID (`@lid`) otherwise. List both, or phone-typed messages are dropped. e.g. `917972833243@c.us,157076097654949@lid` |
 | `OPENWA_ALLOW_SELF_CHAT` | no | `true` lets "message yourself" traffic reach the agent (still needs a self-mention) |
+| `OPENWA_ALLOW_OTHERS` | no | default **`false`** — only self-chat is ever forwarded; groups and other people's DMs are dropped in the adapter, before Hermes |
+| `OPENWA_UNAUTHORIZED_DM_BEHAVIOR` | no | with `ALLOW_OTHERS=true`: `ignore` (default) / `pair` / `decline` for unknown senders |
 | `OPENWA_ALLOWED_USERS` / `OPENWA_ALLOW_ALL_USERS` | no | Hermes' standard authorization gates |
 | `OPENWA_HOME_CHANNEL` | no | Default chat for `deliver=openwa` cron jobs |
 
@@ -104,6 +106,12 @@ curl -X POST http://127.0.0.1:2785/api/sessions/$SESSION_ID/webhooks \
   indicator never fails a turn.
 - **One profile at a time.** The adapter takes a scoped lock on the OpenWA session, because two
   Hermes profiles driving one linked device would fight over it.
+- **STRICT: self-chat only, by default.** `OPENWA_ALLOW_OTHERS` defaults to **false**, so groups
+  and other people's DMs are dropped *in the adapter* — before Hermes, before authorization,
+  before anything can be sent back. This is deliberate: Hermes' default for an unknown DM is to
+  DM **back** a pairing code (`unauthorized_dm_behavior: pair`), which on WhatsApp means your
+  contacts receive bot replies they never asked for. Set `OPENWA_ALLOW_OTHERS=true` to run the
+  agent in groups, then tune `OPENWA_UNAUTHORIZED_DM_BEHAVIOR` and `require_mention`.
 
 ## Layout
 

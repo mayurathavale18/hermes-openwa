@@ -49,6 +49,18 @@ optional_env:
       Set true to let "message yourself" traffic reach the agent. Still requires a self-mention
       (or a literal @me) so ordinary notes to self stay out.
     password: false
+  - name: OPENWA_ALLOW_OTHERS
+    description: >
+      Set true to forward non-self-chat messages (groups, other people's DMs) to Hermes, where
+      the allowlist and its DM behavior govern. Default FALSE: only self-chat ever reaches the
+      agent, so nobody else can trigger a turn from this number.
+    password: false
+  - name: OPENWA_UNAUTHORIZED_DM_BEHAVIOR
+    description: >
+      When OPENWA_ALLOW_OTHERS=true: what an unknown sender gets. pair (Hermes' default) DMs
+      them a pairing code; ignore drops silently; decline sends one polite refusal. Default
+      ignore -- a stranger never gets a bot reply.
+    password: false
   - name: OPENWA_ALLOWED_USERS
     description: "Comma-separated JIDs allowed to talk to the bot"
     password: false

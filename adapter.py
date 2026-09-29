@@ -30,6 +30,7 @@ try:  # package import when loaded as a plugin
         OpenWaError,
         chunk_text,
         extract_trigger,
+        is_self_chat,
         verify_signature,
     )
 except ImportError:  # loaded as a flat module
@@ -40,6 +41,7 @@ except ImportError:  # loaded as a flat module
         OpenWaError,
         chunk_text,
         extract_trigger,
+        is_self_chat,
         verify_signature,
     )
 
@@ -69,6 +71,7 @@ class OpenWaAdapter(BasePlatformAdapter):
         # adapter_factory runs after register(ctx); constructing the adapter before registration
         # would raise ValueError.
         super().__init__(config, Platform(PLATFORM_NAME))
+        self.config = config
         extra = getattr(config, "extra", None) or {}
 
         self.base_url = extra_or_secret(extra, "base_url", "OPENWA_BASE_URL") or ""
@@ -82,6 +85,20 @@ class OpenWaAdapter(BasePlatformAdapter):
         # BOTH the phone JID and the account LID depending on where the message originated.
         raw_self = extra_or_secret(extra, "self_jid", "OPENWA_SELF_JID") or ""
         self.self_ids = tuple(s.strip() for s in str(raw_self).split(",") if s.strip())
+        # STRICT by default: only self-chat is forwarded, so nobody else can ever reach the
+        # agent from this number. OPENWA_ALLOW_OTHERS=true hands authorization to the gateway
+        # instead (allowlist + its own DM behavior).
+        self.allow_others = _truthy(extra_or_secret(extra, "allow_others", "OPENWA_ALLOW_OTHERS"))
+        # Belt to that layer: the gateway's default for an unknown DM is to DM BACK a pairing
+        # code (gateway/config.py: unauthorized_dm_behavior = "pair"). On WhatsApp that means
+        # strangers get bot replies. Seed "ignore" -- silence, not a pairing offer -- unless
+        # the operator picks pair/decline explicitly.
+        behavior = str(extra_or_secret(extra, "unauthorized_dm_behavior", "OPENWA_UNAUTHORIZED_DM_BEHAVIOR") or "ignore").strip().lower()
+        self.unauthorized_dm_behavior = behavior if behavior in {"pair", "ignore", "decline"} else "ignore"
+        # The gateway's authz mixin reads platforms[<name>].extra[...] at turn time, so seed it
+        # on the config this adapter was constructed with (env_enablement seeds the same dict).
+        if isinstance(extra, dict):
+            extra["unauthorized_dm_behavior"] = self.unauthorized_dm_behavior
 
         self._client = OpenWaClient(self.base_url, self.api_key)
         self._dedup = MessageDeduplicator(ttl_seconds=DEDUP_TTL_SECONDS)
@@ -195,6 +212,12 @@ class OpenWaAdapter(BasePlatformAdapter):
             return
         # Our own sends come back as events (message.sent) — never let them start a turn.
         if self._echo.is_echo(data.get("id")):
+            return
+
+        # STRICT by default: anything not a self-chat (groups, other people's DMs) is dropped
+        # HERE, before Hermes, so the gateway can never DM a stranger a pairing code or a
+        # decline. OPENWA_ALLOW_OTHERS=true forwards and lets Hermes' authorization govern.
+        if not self.allow_others and not is_self_chat(data, self_ids=self.self_ids):
             return
 
         trigger = extract_trigger(
