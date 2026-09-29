@@ -125,8 +125,22 @@ One ordering constraint worth knowing: `Platform(name)` only resolves a dynamic 
 runs. Hermes guarantees that (the factory is deferred), and there is a comment on it in
 `adapter.py`.
 
-**Not yet exercised:** a live gateway run against a real OpenWA session — that needs real
-credentials and posts to WhatsApp. Everything up to the wire is covered.
+**Exercised live** against a real OpenWA session: webhook → adapter → Hermes turn → reply
+delivered back into WhatsApp, with the gateway logging
+`response ready: platform=openwa … time=11.0s`. Three things the live run caught and this repo
+now handles:
+
+- The webhook URL must be reachable from **inside the OpenWA container** — `host.docker.internal`,
+  not `127.0.0.1` (which is the container's own loopback; the failure shows up as `fetch failed`
+  after OpenWA's three retries, then a delivery-failure row).
+- OpenWA emits **`message.sent`** for API- and automation-initiated sends, so a "message yourself"
+  prompt never arrives on `message.received` alone. Both are subscribed now.
+- The self-chat peer is an **`@lid` JID** (`157076097654949@lid`), not the phone JID — it must be
+  in the allowlist (and `OPENWA_SELF_JID`) or Hermes rejects the sender as unauthorized.
+
+One caveat that is *not* this plugin: the configured model's provider rejected the turn for
+exhausted credits, so the delivered reply was the provider's error text. Everything up to the
+model is verified.
 
 ## License
 

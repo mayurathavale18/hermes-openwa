@@ -175,6 +175,33 @@ class OpenWaError(RuntimeError):
     """Raised when OpenWA answers with an error status."""
 
 
+class EchoGuard:
+    """Message ids this adapter sent.
+
+    Subscribing the webhook to ``message.sent`` is what makes an API- or automation-initiated
+    "message yourself" prompt reach the agent — but it also means every reply the agent posts
+    comes back as an event. A sent id must therefore never start a turn, or an agent reply that
+    happens to contain a self-mention would loop forever.
+    """
+
+    def __init__(self, max_ids: int = 500) -> None:
+        self._ids: dict[str, None] = {}
+        self._max = max_ids
+
+    def remember(self, message_id: str | None) -> None:
+        if not message_id:
+            return
+        self._ids[message_id] = None
+        while len(self._ids) > self._max:
+            oldest = next(iter(self._ids), None)
+            if oldest is None:
+                break
+            del self._ids[oldest]
+
+    def is_echo(self, message_id: str | None) -> bool:
+        return bool(message_id) and message_id in self._ids
+
+
 class OpenWaClient:
     """Minimal client for the OpenWA routes the adapter needs.
 

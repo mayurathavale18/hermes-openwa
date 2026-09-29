@@ -25,6 +25,7 @@ from gateway.status import acquire_scoped_lock, release_scoped_lock
 try:  # package import when loaded as a plugin
     from .openwa import (
         WHATSAPP_TEXT_LIMIT,
+        EchoGuard,
         OpenWaClient,
         OpenWaError,
         chunk_text,
@@ -34,6 +35,7 @@ try:  # package import when loaded as a plugin
 except ImportError:  # loaded as a flat module
     from openwa import (  # type: ignore[no-redef]
         WHATSAPP_TEXT_LIMIT,
+        EchoGuard,
         OpenWaClient,
         OpenWaError,
         chunk_text,
@@ -80,6 +82,7 @@ class OpenWaAdapter(BasePlatformAdapter):
 
         self._client = OpenWaClient(self.base_url, self.api_key)
         self._dedup = MessageDeduplicator(ttl_seconds=DEDUP_TTL_SECONDS)
+        self._echo = EchoGuard()
         # Which OpenWA session to send from, per chat. Inbound fills it; the configured
         # session id is the fallback for chats the adapter has not seen a message from.
         self._sessions: dict[str, str] = {}
@@ -177,12 +180,18 @@ class OpenWaAdapter(BasePlatformAdapter):
                 log.exception("openwa: failed to handle a webhook event")
 
     async def _handle_envelope(self, envelope: dict[str, Any]) -> None:
-        if envelope.get("event") != "message.received":
+        # message.received is the normal inbound path; message.sent additionally lets an
+        # automation or API-initiated "message yourself" prompt reach the agent (it is then
+        # gated by allow_self_chat + the mention/echo checks below).
+        if envelope.get("event") not in {"message.received", "message.sent"}:
             return
 
         data = envelope.get("data") or {}
         key = envelope.get("idempotencyKey") or data.get("id")
         if key and self._dedup.is_duplicate(str(key)):
+            return
+        # Our own sends come back as events (message.sent) — never let them start a turn.
+        if self._echo.is_echo(data.get("id")):
             return
 
         trigger = extract_trigger(
@@ -228,6 +237,7 @@ class OpenWaAdapter(BasePlatformAdapter):
             for chunk in chunk_text(str(content or "")):
                 result = await self._client.send_text(session_id, chat_id, chunk)
                 message_id = result.get("messageId") or message_id
+                self._echo.remember(result.get("messageId"))
         except OpenWaError as exc:
             log.error("openwa: send to %s failed: %s", chat_id, exc)
             return SendResult(success=False, error=str(exc))

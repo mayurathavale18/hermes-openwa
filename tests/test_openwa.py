@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from openwa import (  # noqa: E402
+    EchoGuard,
     OpenWaClient,
     OpenWaError,
     chunk_text,
@@ -218,6 +219,30 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
         client = OpenWaClient("http://x", "key", post=RecordingPost(raises=OpenWaError("HTTP 500")))
         with self.assertRaises(OpenWaError):
             await client.send_text("sess-1", SELF, "hello")
+
+
+# ------------------------------------------------------------------------------ echo guard
+
+
+class EchoGuardTests(unittest.TestCase):
+    def test_remembers_sent_ids(self):
+        guard = EchoGuard()
+        guard.remember("m-1")
+        self.assertTrue(guard.is_echo("m-1"))
+        self.assertFalse(guard.is_echo("m-2"))
+
+    def test_ignores_empty_ids(self):
+        guard = EchoGuard()
+        guard.remember("")
+        self.assertFalse(guard.is_echo(""))
+
+    def test_evicts_oldest_past_the_cap(self):
+        guard = EchoGuard(2)
+        guard.remember("a")
+        guard.remember("b")
+        guard.remember("c")
+        self.assertFalse(guard.is_echo("a"))
+        self.assertTrue(guard.is_echo("c"))
 
 
 # ---------------------------------------------------------------------- adapter sanity
