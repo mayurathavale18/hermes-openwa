@@ -138,9 +138,17 @@ now handles:
 - The self-chat peer is an **`@lid` JID** (`157076097654949@lid`), not the phone JID — it must be
   in the allowlist (and `OPENWA_SELF_JID`) or Hermes rejects the sender as unauthorized.
 
-One caveat that is *not* this plugin: the configured model's provider rejected the turn for
-exhausted credits, so the delivered reply was the provider's error text. Everything up to the
-model is verified.
+One caveat that is *not* this plugin: the model. The install wizard defaults to
+`z-ai/glm-5.3-flashx`, which is a **paid** Nous Portal model — with no credits the turn fails and
+the provider's error text is delivered to WhatsApp instead of an answer. Pick a free one
+(`config.yaml` → `model.default`, or `/model` in the chat): the Nous catalog lists nine `$0`
+models, e.g. `poolside/laguna-s-2.1:free` (code-focused) — verified working. Note the portal
+retires free variants over time (`meituan/longcat-2.0:free` now answers "no longer free"), and
+that a terse automation-looking ping can get a silence-token reply — ask a real question.
+
+Also verified: the gateway **denies every WhatsApp user not in `OPENWA_ALLOWED_USERS`** — the
+user's other chats and groups appear in the log as `Unauthorized user … on openwa` and are
+dropped without an agent turn.
 
 ## License
 
