@@ -1,5 +1,10 @@
 # hermes-openwa
 
+[![CI](https://github.com/mayurathavale18/hermes-openwa/actions/workflows/ci.yml/badge.svg)](https://github.com/mayurathavale18/hermes-openwa/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-e2b04a.svg)](LICENSE)
+![Python](https://img.shields.io/badge/python-3.11%2B-5b9dff)
+![Hermes](https://img.shields.io/badge/Hermes%20Agent-platform%20plugin-7bd88f)
+
 A [Hermes Agent](https://hermes-agent.nousresearch.com/) platform plugin that fronts an
 existing **[OpenWA](https://github.com/rmyndharis/OpenWA)** session — so you can chat with
 Hermes from WhatsApp.
@@ -10,6 +15,33 @@ Hermes already ships WhatsApp, but through **Baileys**. A WhatsApp number can on
 one WhatsApp Web session at a time, so if the number is already paired to OpenWA, Hermes'
 built-in adapter cannot also use it. This plugin talks to the OpenWA gateway you already run
 instead of forcing a re-pair — one linked device, whichever product owns it.
+
+| | Built-in WhatsApp (Baileys) | OpenWA adapter (this plugin) |
+| --- | --- | --- |
+| Pairing | Its own WhatsApp Web session | Reuses your existing OpenWA session |
+| OpenWA already paired? | ✗ — must re-pair the number | ✓ |
+| Dependencies | Node.js bridge subprocess | none beyond Hermes (aiohttp) |
+| Best for | Fresh Hermes-only setups | Operators already running OpenWA |
+
+## How it works
+
+```
+you (phone) ──► WhatsApp self-chat  "@me what's the weather"
+                        │
+                        ▼
+                 OpenWA gateway ──webhook──►  this adapter
+                                              · verify X-OpenWA-Signature
+                                              · dedupe · echo gate · self-chat gate
+                        ┌─────────────────────┘
+                        ▼
+                 Hermes gateway ──► AIAgent (tools, skills, memory)
+                        │
+                        ▼
+        reply via OpenWA send-text ──► WhatsApp (progress edited in place)
+```
+
+The transport (`openwa.py`) knows OpenWA; the adapter (`adapter.py`) knows Hermes. Neither
+knows the other's internals, and only `adapter.py` imports `gateway.*`.
 
 ## Install
 
@@ -49,7 +81,7 @@ curl -X POST http://127.0.0.1:2785/api/sessions/$SESSION_ID/webhooks \
 | `OPENWA_WEBHOOK_SECRET` | **yes** | HMAC secret from the OpenWA webhook. Required on purpose: an unsigned webhook can start an agent turn with terminal access |
 | `OPENWA_SESSION_ID` | no | Session to send from; defaults to the session named in each webhook |
 | `OPENWA_WEBHOOK_HOST` / `OPENWA_WEBHOOK_PORT` | no | default `127.0.0.1` / `8790` |
-| `OPENWA_SELF_JID` | no | The account's own JID, when it cannot be derived from the message |
+| `OPENWA_SELF_JID` | no | The account's own identities, **comma-separated** — WhatsApp uses the phone JID (`@c.us`) for phone-originated messages and the account LID (`@lid`) otherwise. List both, or phone-typed messages are dropped. e.g. `917972833243@c.us,157076097654949@lid` |
 | `OPENWA_ALLOW_SELF_CHAT` | no | `true` lets "message yourself" traffic reach the agent (still needs a self-mention) |
 | `OPENWA_ALLOWED_USERS` / `OPENWA_ALLOW_ALL_USERS` | no | Hermes' standard authorization gates |
 | `OPENWA_HOME_CHANNEL` | no | Default chat for `deliver=openwa` cron jobs |
@@ -80,7 +112,8 @@ plugin.yaml     manifest: kind: platform, env declarations
 __init__.py     re-exports register() for the loader
 adapter.py      OpenWaAdapter(BasePlatformAdapter) + register(ctx) — the only Hermes-aware file
 openwa.py       transport: signature, trigger gate, chunking, REST client (no Hermes, no deps)
-tests/          stdlib unittest suite
+tests/          test_openwa (transport, stdlib) · test_adapter (adapter path, needs Hermes)
+.github/        CI: the suite on Python 3.11–3.13
 ```
 
 The split is deliberate: `openwa.py` can be read and tested without Hermes, and `adapter.py`
@@ -88,13 +121,30 @@ stays thin.
 
 ## Tests
 
+Two tiers, both stdlib:
+
 ```bash
-python -m unittest tests.test_openwa -v     # 25 tests, stdlib only
+python -m unittest tests.test_openwa -v     # 28 tests — transport, gates, client; no Hermes needed
+python -m unittest tests.test_adapter -v    # 10 tests — the Hermes-facing adapter path
 ```
 
-The suite covers signature verification, the trigger/loop-prevention gate, chunking, and the
-REST client against an injected transport. `adapter.py` is syntax-checked (it cannot be imported
-without Hermes on the path).
+`test_openwa` covers signature verification, the trigger/loop-prevention gate (including the
+phone-originated self-chat shape), chunking, and the REST client against an injected transport —
+it runs anywhere. `test_adapter` imports `gateway.*`, so it needs Hermes on the path
+(`HERMES_REPO` env var, or it finds the default Windows install path) and skips automatically
+when Hermes isn't there.
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+| --- | --- |
+| `Unauthorized user: … on openwa` in the log | The sender isn't in `OPENWA_ALLOWED_USERS` — dropped before any agent turn. Add the JID if you want that chat, or ignore (it's the documented deny-by-default posture). |
+| Delivery-failure rows with `fetch failed` and `lastStatusCode: null` | The webhook URL isn't reachable from **inside the OpenWA container** — use `host.docker.internal`, not `127.0.0.1`. |
+| `Model '…' requires available credits` | A paid model with no credits: `/model` to a `:free` one or top up at portal.nousresearch.com. |
+| `Model '…' not found` | The id doesn't exist on Nous Portal. Note OpenWA's own free variants get retired (`meituan/longcat-2.0:free` now says "no longer free"). |
+| Reply is *"Your request was not processed…"* | The model answered with a silence token — ask a real question rather than a terse automation-style ping, or pick a chattier model. |
+| No webhook event at all | Check `lastTriggeredAt` on the webhook record, and that the OpenWA webhook subscribes to `message.received` **and** `message.sent` (an API-initiated prompt only emits `message.sent`). |
+| `Model '…' not found` on a model you know exists | `Platform(name)` only resolves *after* `register(ctx)` — never construct the adapter before the plugin registers. |
 
 ## Verified against a real Hermes install
 
