@@ -132,8 +132,8 @@ stays thin.
 Two tiers, both stdlib:
 
 ```bash
-python -m unittest tests.test_openwa -v     # 28 tests — transport, gates, client; no Hermes needed
-python -m unittest tests.test_adapter -v    # 10 tests — the Hermes-facing adapter path
+python -m unittest tests.test_openwa -v     # 35 tests — transport, gates, client; no Hermes needed
+python -m unittest tests.test_adapter -v    # 13 tests — the Hermes-facing adapter path (45 total)
 ```
 
 `test_openwa` covers signature verification, the trigger/loop-prevention gate (including the
