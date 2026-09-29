@@ -140,6 +140,62 @@ class TriggerTests(unittest.TestCase):
         self.assertFalse(same_jid(SELF, "919999999999@c.us"))
 
 
+class PhoneOriginatedSelfChatTests(unittest.TestCase):
+    """WhatsApp uses DIFFERENT JIDs for the two sides of a phone-originated self-chat:
+
+    from = the phone JID (@c.us), to = the account LID (@lid). This is the shape that a
+    `from == to` check silently drops — every message typed from the phone.
+    """
+
+    PHONE = "917972833243@c.us"
+    LID = "157076097654949@lid"
+    BOTH = (PHONE, LID)
+
+    def message(self, **overrides):
+        base = message(**{"from": self.PHONE, "to": self.LID, "chatId": self.LID})
+        base.update(overrides)
+        return base
+
+    def test_is_self_chat_accepts_both_identities(self):
+        self.assertTrue(is_self_chat(self.message(), self_ids=self.BOTH))
+
+    def test_is_self_chat_rejects_a_real_recipient(self):
+        # A message this account sent to a friend is not a self-chat, even though fromMe.
+        msg = self.message(**{"to": "29274698436841@lid", "chatId": "29274698436841@lid"}, body="hi")
+        self.assertFalse(is_self_chat(msg, self_ids=self.BOTH))
+
+    def test_a_phone_originated_trigger_is_extracted(self):
+        trigger = extract_trigger(
+            self.message(body="@me fix the failing test", mentionedIds=[self.PHONE]),
+            self_ids=self.BOTH,
+            allow_self_chat=True,
+        )
+        self.assertIsNotNone(trigger)
+        self.assertEqual(trigger.prompt, "fix the failing test")
+        self.assertEqual(trigger.chat_id, self.LID)
+
+    def test_a_body_mention_of_the_phone_jid_matches(self):
+        trigger = extract_trigger(
+            self.message(body=f"@{self.PHONE.split('@')[0]} hello"),
+            self_ids=self.BOTH,
+            allow_self_chat=True,
+        )
+        self.assertEqual(trigger.prompt, "hello")
+
+    def test_a_friend_dm_is_not_a_trigger_even_with_a_mention_of_self(self):
+        msg = self.message(**{"to": "29274698436841@lid", "chatId": "29274698436841@lid"}, body="@me hi")
+        self.assertIsNone(
+            extract_trigger(msg, self_ids=self.BOTH, allow_self_chat=True)
+        )
+
+    def test_self_ids_also_accept_a_comma_separated_string(self):
+        self.assertTrue(is_self_chat(self.message(), self_ids=f"{self.PHONE},{self.LID}"))
+
+    def test_without_ids_the_legacy_from_equals_to_check_applies(self):
+        self.assertTrue(is_self_chat(message()))
+        self.assertFalse(is_self_chat(self.message()))
+
+
 # ------------------------------------------------------------------------------- chunking
 
 

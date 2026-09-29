@@ -38,7 +38,11 @@ optional_env:
     description: "Port for the local webhook listener (default 8790)"
     password: false
   - name: OPENWA_SELF_JID
-    description: "The account's own JID, if it cannot be derived from the message"
+    description: >
+      The account's own identities, comma-separated. WhatsApp addresses the self-chat with the
+      phone JID (@c.us) when you type from the phone and the account LID (@lid) otherwise —
+      list BOTH or phone-originated messages are dropped.
+      Example: "917972833243@c.us,157076097654949@lid"
     password: false
   - name: OPENWA_ALLOW_SELF_CHAT
     description: >

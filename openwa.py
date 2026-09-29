@@ -21,7 +21,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Mapping
+from typing import Any, Awaitable, Callable, Mapping, Sequence
 from urllib.parse import quote
 
 log = logging.getLogger(__name__)
@@ -78,19 +78,43 @@ def same_jid(a: str, b: str) -> bool:
     return bool(left) and left == right
 
 
-def is_self_chat(message: Mapping[str, Any]) -> bool:
-    """A "message yourself" message: sent by this account, into this account, not a group."""
-    return (
-        message.get("fromMe") is True
-        and not message.get("isGroup")
-        and message.get("from") == message.get("to")
-    )
+def _self_id_set(self_ids) -> tuple[str, ...]:
+    """Normalize the configured self identities (a JID, or a comma-separated list) to a tuple."""
+    if not self_ids:
+        return ()
+    if isinstance(self_ids, str):
+        self_ids = self_ids.split(",")
+    return tuple(str(s).strip() for s in self_ids if str(s).strip())
+
+
+def _matches_any(jid: str, ids: Sequence[str]) -> bool:
+    return any(same_jid(jid, i) for i in ids)
+
+
+def is_self_chat(message: Mapping[str, Any], self_ids: Sequence[str] = ()) -> bool:
+    """A "message yourself" message: sent by this account, into this account, not a group.
+
+    WhatsApp does not use one stable JID for the account. A phone-originated self-chat arrives
+    as ``from`` = the phone JID (``@c.us``) and ``to`` = the account's LID (``@lid``), while an
+    API-originated one can arrive with both as the LID — so ``from == to`` silently drops every
+    message typed from the phone. The check is therefore "both sides are the account's own
+    identities", against every identity configured in ``OPENWA_SELF_JID``.
+    """
+    if message.get("fromMe") is not True or message.get("isGroup"):
+        return False
+
+    sender = str(message.get("from") or "")
+    recipient = str(message.get("to") or "")
+    ids = _self_id_set(self_ids)
+    if not ids:
+        return sender == recipient  # no identities configured: exact-match fallback
+    return _matches_any(sender, ids) and _matches_any(recipient, ids)
 
 
 def extract_trigger(
     message: Mapping[str, Any],
     *,
-    self_jid: str | None = None,
+    self_ids: Sequence[str] = (),
     allow_self_chat: bool = False,
     accept_at_me: bool = True,
 ) -> Trigger | None:
@@ -109,14 +133,14 @@ def extract_trigger(
     body = str(message.get("body") or "")
 
     if message.get("fromMe") is True:
-        if not allow_self_chat or not is_self_chat(message):
+        if not allow_self_chat or not is_self_chat(message, self_ids):
             return None
 
-        jid = self_jid or str(message.get("from") or "")
-        digits = _subscriber(jid)
+        ids = _self_id_set(self_ids) or _self_id_set(message.get("from"))
+        digits = {_subscriber(i) for i in ids if _subscriber(i)}
         mentioned = message.get("mentionedIds") or []
-        mentioned_by_id = any(same_jid(str(entry), jid) for entry in mentioned)
-        mentioned_in_body = bool(digits) and f"@{digits}" in body
+        mentioned_by_id = any(_matches_any(str(entry), ids) for entry in mentioned)
+        mentioned_in_body = any(f"@{d}" in body for d in digits)
         said_at_me = accept_at_me and _AT_ME.search(body) is not None
 
         if not (mentioned_by_id or mentioned_in_body or said_at_me):
@@ -135,10 +159,10 @@ def extract_trigger(
     )
 
 
-def _strip_trigger_tokens(body: str, digits: str) -> str:
+def _strip_trigger_tokens(body: str, digits: set[str]) -> str:
     out = _AT_ME.sub(" ", body)
-    if digits:
-        out = re.sub(rf"@{re.escape(digits)}(?!\d)", " ", out)
+    for d in digits:
+        out = re.sub(rf"@{re.escape(d)}(?!\d)", " ", out)
     return re.sub(r"\s+", " ", out).strip()
 
 

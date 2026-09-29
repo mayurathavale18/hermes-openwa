@@ -137,6 +137,11 @@ now handles:
   prompt never arrives on `message.received` alone. Both are subscribed now.
 - The self-chat peer is an **`@lid` JID** (`157076097654949@lid`), not the phone JID — it must be
   in the allowlist (and `OPENWA_SELF_JID`) or Hermes rejects the sender as unauthorized.
+- Worse: a **phone-originated** self-chat arrives as `from` = the phone JID and `to` = the LID,
+  so a naive `from == to` check silently drops every message typed from the phone (two `@me`
+  messages died exactly this way on the first live attempt). `OPENWA_SELF_JID` therefore takes a
+  **comma-separated list of both identities**, and `is_self_chat` checks that both sides are the
+  account's own.
 
 One caveat that is *not* this plugin: the model. The install wizard defaults to
 `z-ai/glm-5.3-flashx`, which is a **paid** Nous Portal model — with no credits the turn fails and

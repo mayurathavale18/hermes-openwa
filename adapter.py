@@ -75,10 +75,13 @@ class OpenWaAdapter(BasePlatformAdapter):
         self.api_key = extra_or_secret(extra, "api_key", "OPENWA_API_KEY") or ""
         self.webhook_secret = extra_or_secret(extra, "webhook_secret", "OPENWA_WEBHOOK_SECRET")
         self.default_session_id = extra_or_secret(extra, "session_id", "OPENWA_SESSION_ID")
-        self.self_jid = extra_or_secret(extra, "self_jid", "OPENWA_SELF_JID")
         self.allow_self_chat = _truthy(extra_or_secret(extra, "allow_self_chat", "OPENWA_ALLOW_SELF_CHAT"))
         self.webhook_host = extra_or_secret(extra, "webhook_host", "OPENWA_WEBHOOK_HOST") or "127.0.0.1"
         self.webhook_port = int(extra_or_secret(extra, "webhook_port", "OPENWA_WEBHOOK_PORT") or DEFAULT_WEBHOOK_PORT)
+        # The account's own identities, comma-separated: WhatsApp addresses the self-chat with
+        # BOTH the phone JID and the account LID depending on where the message originated.
+        raw_self = extra_or_secret(extra, "self_jid", "OPENWA_SELF_JID") or ""
+        self.self_ids = tuple(s.strip() for s in str(raw_self).split(",") if s.strip())
 
         self._client = OpenWaClient(self.base_url, self.api_key)
         self._dedup = MessageDeduplicator(ttl_seconds=DEDUP_TTL_SECONDS)
@@ -196,7 +199,7 @@ class OpenWaAdapter(BasePlatformAdapter):
 
         trigger = extract_trigger(
             data,
-            self_jid=self.self_jid,
+            self_ids=self.self_ids,
             allow_self_chat=self.allow_self_chat,
         )
         if trigger is None:
