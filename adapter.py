@@ -231,6 +231,10 @@ class OpenWaAdapter(BasePlatformAdapter):
         session_id = self.default_session_id or envelope.get("sessionId")
         if session_id:
             self._sessions[trigger.chat_id] = session_id
+            try:
+                await self._client.react(session_id, trigger.chat_id, trigger.message_id, "👾")
+            except Exception:  # presence and reactions must never prevent a turn
+                log.debug("openwa: acknowledgement reaction failed", exc_info=True)
 
         log.debug("openwa: inbound from %s", trigger.chat_id)
         await self.handle_message(
@@ -241,7 +245,10 @@ class OpenWaAdapter(BasePlatformAdapter):
                     chat_id=trigger.chat_id,
                     chat_name=data.get("chatName") or trigger.chat_id,
                     chat_type="group" if data.get("isGroup") else "dm",
-                    user_id=data.get("author") or data.get("from") or trigger.chat_id,
+                    # A verified self-chat may carry a device-qualified author LID. Hermes'
+                    # allowlist needs the stable account identity, not that device suffix.
+                    user_id=(self.self_ids[0] if self.self_ids and is_self_chat(data, self_ids=self.self_ids)
+                             else data.get("author") or data.get("from") or trigger.chat_id),
                     user_name=data.get("pushName") or data.get("from"),
                 ),
                 message_id=trigger.message_id,
@@ -260,8 +267,9 @@ class OpenWaAdapter(BasePlatformAdapter):
 
         message_id: str | None = None
         try:
-            for chunk in chunk_text(str(content or "")):
-                result = await self._client.send_text(session_id, chat_id, chunk)
+            header = "👾 *Agent · Hermes*\n\n"
+            for chunk in chunk_text(str(content or ""), WHATSAPP_TEXT_LIMIT - len(header)):
+                result = await self._client.send_text(session_id, chat_id, header + chunk)
                 message_id = result.get("messageId") or message_id
                 self._echo.remember(result.get("messageId"))
         except OpenWaError as exc:
@@ -270,7 +278,7 @@ class OpenWaAdapter(BasePlatformAdapter):
 
         return SendResult(success=True, message_id=message_id)
 
-    async def send_typing(self, chat_id: str) -> None:
+    async def send_typing(self, chat_id: str, metadata=None) -> None:
         """Best effort — a failed indicator must never fail a turn."""
         session_id = self._session_for(chat_id)
         if not session_id:
@@ -279,6 +287,14 @@ class OpenWaAdapter(BasePlatformAdapter):
             await self._client.send_chat_state(session_id, chat_id, "typing")
         except Exception:  # noqa: BLE001 - presence is cosmetic
             log.debug("openwa: typing indicator failed for %s", chat_id, exc_info=True)
+
+    async def stop_typing(self, chat_id: str) -> None:
+        session_id = self._session_for(chat_id)
+        if session_id:
+            try:
+                await self._client.send_chat_state(session_id, chat_id, "paused")
+            except Exception:
+                log.debug("openwa: clearing typing failed for %s", chat_id, exc_info=True)
 
     async def get_chat_info(self, chat_id: str) -> dict[str, Any]:
         # Derived locally: OpenWA exposes a chats route, but the kind is already implied by the

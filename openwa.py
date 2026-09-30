@@ -302,3 +302,9 @@ class OpenWaClient:
             f"/api/sessions/{quote(session_id)}/chats/typing",
             {"chatId": chat_id, "state": state},
         )
+
+    async def react(self, session_id: str, chat_id: str, message_id: str, emoji: str) -> dict[str, Any]:
+        return await self._request(
+            f"/api/sessions/{quote(session_id)}/messages/react",
+            {"chatId": chat_id, "messageId": message_id, "emoji": emoji},
+        )

@@ -9,6 +9,39 @@ A [Hermes Agent](https://hermes-agent.nousresearch.com/) platform plugin that fr
 existing **[OpenWA](https://github.com/rmyndharis/OpenWA)** session — so you can chat with
 Hermes from WhatsApp.
 
+![Technical WhatsApp self-chat workflow with an acknowledgement reaction, labelled agent replies and cmd chat approvals](docs/assets/whatsapp-workflow.svg)
+
+*Shared OpenWA setup with [agent-bridge](https://github.com/mayurathavale18/agent-bridge).
+This example approval flow belongs to the cmd bridge with its approval gate enabled.*
+
+## One self-chat, different harnesses and models
+
+![Technical server-side switch between Hermes and Command Code through one OpenWA WhatsApp session](docs/assets/harness-switching.svg)
+
+Use this plugin for Hermes and agent-bridge for Command Code. The server routes new messages
+to one active webhook, so you keep the same WhatsApp session without duplicate new turns.
+Harness histories remain separate. The deployed
+[server selector](https://github.com/mayurathavale18/agent-bridge/blob/main/deploy/k3s/select-harness.py)
+performs the switch after checking cmd readiness.
+
+![Technical Hermes model selection from WhatsApp self-chat](docs/assets/model-switching.svg)
+
+With Hermes active, send `@me /model` to list provider models, then
+`@me /model <model-id>` using an actual ID from that list. Models, credentials and pricing depend on your provider.
+The cmd bridge uses dashboard configuration and restart for model changes.
+
+## Companion bridge dashboard
+
+![Real deployed agent-bridge dashboard showing Command Code, Kimi-K3 and the enabled approval gate](docs/assets/dashboard.png)
+
+This is the companion agent-bridge dashboard, not a Hermes settings page. It is deployed in
+the Contabo `agent-stack` namespace and accessed through an SSH tunnel. Fields marked
+`set by env` are pinned by the deployment; saved changes apply after restart. This dashboard
+configures bridge harnesses; Hermes ↔ cmd webhook routing uses the server selector.
+
+See the [bridge deployment instructions](https://github.com/mayurathavale18/agent-bridge/blob/main/docs/contabo.md).
+Asset sources and provenance are in [docs/assets/README.md](docs/assets/README.md).
+
 ## Motivation
 
 I run OpenWA as my WhatsApp gateway and Hermes as my personal agent — and I wanted them to talk

@@ -101,6 +101,7 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
                 self.sizes = []
 
             async def send_text(self, session_id, chat_id, text, mentions=None):
+                assert text.startswith("👾 *Agent · Hermes*\n\n")
                 self.sizes.append(len(text))
                 return {"messageId": f"m{len(self.sizes)}"}
 
@@ -149,12 +150,14 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
                  "idempotencyKey": "idem-1",
                  "data": {"id": "phone-msg-1", "from": self.PHONE, "to": self.LID,
                           "chatId": self.LID, "body": "@me what is the time",
+                          "author": "157076097654949:24@lid",
                           "fromMe": True, "isGroup": False, "kind": "individual",
                           "mentionedIds": [self.PHONE]}}
             )
         )
         self.assertEqual(len(dispatched), 1)
         self.assertEqual(dispatched[0].text, "what is the time")
+        self.assertEqual(dispatched[0].source.user_id, self.PHONE)
 
     def test_an_unrelated_dm_from_this_account_is_dropped(self):
         """A message this account sent to a FRIEND must not reach the agent."""
@@ -224,7 +227,18 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
                 raise RuntimeError("boom")
 
         self.adapter._client = Broken()
-        asyncio.run(self.adapter.send_typing(self.LID))  # must not raise
+        asyncio.run(self.adapter.send_typing(self.LID, metadata={}))  # gateway supplies metadata
+        asyncio.run(self.adapter.stop_typing(self.LID))
+
+    async def test_typing_matches_gateway_call_and_clears_presence(self):
+        calls = []
+        class Fake:
+            async def send_chat_state(self, session_id, chat_id, state):
+                calls.append(state)
+        self.adapter._client = Fake()
+        await self.adapter.send_typing(self.LID, metadata={})
+        await self.adapter.stop_typing(self.LID)
+        self.assertEqual(calls, ["typing", "paused"])
 
     def test_get_chat_info_distinguishes_groups(self):
         async def check():

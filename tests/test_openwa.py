@@ -225,6 +225,13 @@ class ChunkTests(unittest.TestCase):
 
 
 class ClientTests(unittest.IsolatedAsyncioTestCase):
+    async def test_reaction_posts_to_the_message_route(self):
+        post = RecordingPost({"success": True})
+        client = OpenWaClient("http://x", "key", post=post)
+        await client.react("sess-1", SELF, "m-1", "👾")
+        self.assertEqual(post.calls, [("/api/sessions/sess-1/messages/react",
+                                     {"chatId": SELF, "messageId": "m-1", "emoji": "👾"})])
+
     async def test_send_text_posts_to_the_send_text_route(self):
         post = RecordingPost({"messageId": "m-1", "timestamp": 1})
         client = OpenWaClient("http://127.0.0.1:2785/", "key", post=post)
