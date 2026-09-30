@@ -9,6 +9,25 @@ A [Hermes Agent](https://hermes-agent.nousresearch.com/) platform plugin that fr
 existing **[OpenWA](https://github.com/rmyndharis/OpenWA)** session — so you can chat with
 Hermes from WhatsApp.
 
+## Motivation
+
+I run OpenWA as my WhatsApp gateway and Hermes as my personal agent — and I wanted them to talk
+to each other without breaking either. Hermes' answer to WhatsApp is Baileys, which insists on
+being its own WhatsApp Web session; my number was already paired to OpenWA, and I was not
+willing to hand my session to a second client just to make two tools interoperate. WhatsApp
+sessions are also the *crown jewels* here: whoever holds one can read and send as me, so the
+session should live where I control it — one gateway, one pairing, one owner.
+
+The second reason is proximity. An agent that can run terminal commands on my behalf is most
+useful where my data and machines already are — so this plugin is built to be deployed onto my
+own server, in my own cluster, under my own rules, rather than reaching out to a hosted relay
+that would own the credentials for me.
+
+And finally, the default posture matters. A WhatsApp bot that quietly answers strangers is a
+hazard; one that answers *only its operator*, drops everything else in the adapter, and never
+offers pairing codes to a curious contact is a tool. That stance is baked in here — strict by
+default, open by explicit configuration.
+
 ## Why this exists
 
 Hermes already ships WhatsApp, but through **Baileys**. A WhatsApp number can only be paired to
